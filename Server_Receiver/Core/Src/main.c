@@ -33,7 +33,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define TRUE 1
+#define FALSE 0
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -46,6 +47,8 @@ ADC_HandleTypeDef hadc;
 TIM_HandleTypeDef htim3;
 
 /* USER CODE BEGIN PV */
+uint8_t send = 0, compare = 0, receive = 0, idle = 1;
+
 uint32_t prev_millis = 0;
 uint32_t curr_millis = 0;
 uint32_t delay_t = 500; // Initialise delay to 500ms
@@ -61,6 +64,7 @@ static void MX_ADC_Init(void);
 static void MX_TIM3_Init(void);
 
 /* USER CODE BEGIN PFP */
+void checkPB(void);
 void EXTI0_1_IRQHandler(void);
 void writeLCD(char *char_in);
 uint32_t pollADC(void);
@@ -104,7 +108,7 @@ int main(void)
   init_LCD();
 
   // PWM setup
-  uint32_t CCR = 0;
+  uint32_t CCR = 4096;
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3); // Start PWM on TIM3 Channel 3
   /* USER CODE END 2 */
 
@@ -116,12 +120,24 @@ int main(void)
 	HAL_GPIO_TogglePin(GPIOB, LED7_Pin);
 
 	// ADC to LCD; TODO: Read POT1 value and write to LCD
-  uint32_t polled =  pollADC();
-  sprintf(adc_string, "V: %u mV", polled); //Format voltage as string
-  writeLCD(adc_string);
-	
+  // uint32_t polled =  pollADC();
+  // sprintf(adc_string, "%u ", polled); //Format voltage as string
+  // writeLCD(adc_string);
+	checkPB();
+  if (send) {
+    writeLCD("Send");
+  }
+  else if (compare) {
+    writeLCD("Compare");
+  }
+  else if (receive) {
+    writeLCD("Receive");
+  } else if (idle) {
+    writeLCD("Idle");
+  }
+  
   // Update PWM value; TODO: Get CCR
-  CCR = ADCtoCCR(polled); //Set CCR to converted value
+  //CCR = ADCtoCCR(polled); //Set CCR to converted value
 	__HAL_TIM_SetCompare(&htim3, TIM_CHANNEL_3, CCR);
 
 	// Wait for delay ms
@@ -318,9 +334,15 @@ static void MX_GPIO_Init(void)
 
   /**/
   LL_GPIO_SetPinPull(Button0_GPIO_Port, Button0_Pin, LL_GPIO_PULL_UP);
+  LL_GPIO_SetPinPull(Button0_GPIO_Port, Button1_Pin, LL_GPIO_PULL_UP);
+  LL_GPIO_SetPinPull(Button0_GPIO_Port, Button2_Pin, LL_GPIO_PULL_UP);
+  LL_GPIO_SetPinPull(Button0_GPIO_Port, Button3_Pin, LL_GPIO_PULL_UP);
 
   /**/
   LL_GPIO_SetPinMode(Button0_GPIO_Port, Button0_Pin, LL_GPIO_MODE_INPUT);
+  LL_GPIO_SetPinMode(Button0_GPIO_Port, Button1_Pin, LL_GPIO_MODE_INPUT);
+  LL_GPIO_SetPinMode(Button0_GPIO_Port, Button2_Pin, LL_GPIO_MODE_INPUT);
+  LL_GPIO_SetPinMode(Button0_GPIO_Port, Button3_Pin, LL_GPIO_MODE_INPUT);
 
   /**/
   EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_0;
@@ -337,6 +359,19 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
 
+  /*Init other pins with same values*/
+  GPIO_InitStruct.Pin = LED6_Pin;
+  LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
+  GPIO_InitStruct.Pin = LED5_Pin;
+  LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
+  GPIO_InitStruct.Pin = LED4_Pin;
+  LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
+  GPIO_InitStruct.Pin = LED3_Pin;
+  LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
+  GPIO_InitStruct.Pin = LED2_Pin;
+  LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
+  GPIO_InitStruct.Pin = LED1_Pin;
+  LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
 /* USER CODE BEGIN MX_GPIO_Init_2 */
   HAL_NVIC_SetPriority(EXTI0_1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI0_1_IRQn);
@@ -356,6 +391,35 @@ void EXTI0_1_IRQHandler(void)
   prev_millis = curr_millis;
 
 	HAL_GPIO_EXTI_IRQHandler(Button0_Pin); // Clear interrupt flags
+}
+
+// Check push buttons
+void checkPB(void){
+  uint16_t state = (0b1111 & ~(GPIOA -> IDR));
+  if (state == 0b0001){ //SWO to send
+      send = TRUE;
+      compare = FALSE;
+      receive = FALSE;
+      idle = FALSE;
+  }
+  else if (state == 0b0010) { //SW1 to recieve
+      send = FALSE;
+      compare = FALSE;
+      receive = TRUE;
+      idle = FALSE;
+  }
+  else if (state == 0b0100) { //SW2 to compare
+      send = FALSE;
+      compare = TRUE;
+      receive = FALSE;
+      idle = FALSE;
+  }
+  else if (state == 0b1000) { //SW3 to reset
+      send = FALSE;
+      compare = FALSE;
+      receive = FALSE;
+      idle = TRUE;
+  }
 }
 
 // TODO: Complete the writeLCD function
