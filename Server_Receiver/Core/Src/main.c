@@ -47,7 +47,8 @@ ADC_HandleTypeDef hadc;
 TIM_HandleTypeDef htim3;
 
 /* USER CODE BEGIN PV */
-uint8_t send = 0, compare = 0, receive = 0, idle = 1;
+const uint8_t  send = 0b0001, receive = 0b0010, compare = 0b0100, idle = 0b0000, reset = 0b1000;
+uint8_t mode = 0b1000;
 
 uint32_t count_sent = 0; count_recv = 0;
 uint32_t prev_millis = 0;
@@ -120,24 +121,36 @@ int main(void)
 	// Toggle LED0
 	HAL_GPIO_TogglePin(GPIOB, LED7_Pin);
 
-	// ADC to LCD; TODO: Read POT1 value and write to LCD
-  
 	checkPB();
-  if (send) {
-    uint32_t polled =  pollADC();
-    sprintf(adc_string, "Send: %u ", polled); //Format voltage as string
-    writeLCD(adc_string);
-    CCR = ADCtoCCR(polled); //Set CCR to converted value
-	__HAL_TIM_SetCompare(&htim3, TIM_CHANNEL_3, CCR);
-  }
-  else if (compare) {
-    sprintf(adc_string, "Compare: %u", count_sent);
-    writeLCD(adc_string);
-  }
-  else if (receive) {
-    writeLCD("Receive");
-  } else if (idle) {
-    writeLCD("Idle");
+  switch (mode){
+    case idle:
+      writeLCD("Idle");
+      break;
+
+    case send:
+      uint32_t polled =  pollADC();
+      sprintf(adc_string, "Send: %u ", polled); //Format voltage as string
+      writeLCD(adc_string);
+      CCR = ADCtoCCR(polled); //Set CCR to converted value
+      __HAL_TIM_SetCompare(&htim3, TIM_CHANNEL_3, CCR);
+      break;
+
+    case receive:
+      writeLCD("Receive");
+      break;
+
+    case compare:
+      sprintf(adc_string, "Compare: %u", count_sent);
+      writeLCD(adc_string);
+      break;
+    
+    case reset:
+      writeLCD("Reset");
+      break;
+
+    default:
+      writeLCD("Unknown");
+      break;
   }
 
 	// Wait for delay ms
@@ -395,31 +408,7 @@ void EXTI0_1_IRQHandler(void)
 
 // Check push buttons
 void checkPB(void){
-  uint16_t state = (0b1111 & ~(GPIOA -> IDR));
-  if (state == 0b0001){ //SWO to send
-      send = TRUE;
-      compare = FALSE;
-      receive = FALSE;
-      idle = FALSE;
-  }
-  else if (state == 0b0010) { //SW1 to recieve
-      send = FALSE;
-      compare = FALSE;
-      receive = TRUE;
-      idle = FALSE;
-  }
-  else if (state == 0b0100) { //SW2 to compare
-      send = FALSE;
-      compare = TRUE;
-      receive = FALSE;
-      idle = FALSE;
-  }
-  else if (state == 0b1000) { //SW3 to reset
-      send = FALSE;
-      compare = FALSE;
-      receive = FALSE;
-      idle = TRUE;
-  }
+  mode = (0b1111 & ~(GPIOA -> IDR));
 }
 
 // TODO: Complete the writeLCD function
