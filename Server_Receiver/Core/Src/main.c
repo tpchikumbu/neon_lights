@@ -49,6 +49,7 @@ TIM_HandleTypeDef htim3;
 /* USER CODE BEGIN PV */
 uint8_t send = 0, compare = 0, receive = 0, idle = 1;
 
+uint32_t count_sent = 0; count_recv = 0;
 uint32_t prev_millis = 0;
 uint32_t curr_millis = 0;
 uint32_t delay_t = 500; // Initialise delay to 500ms
@@ -108,7 +109,7 @@ int main(void)
   init_LCD();
 
   // PWM setup
-  uint32_t CCR = 4096;
+  uint32_t CCR = 0;
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3); // Start PWM on TIM3 Channel 3
   /* USER CODE END 2 */
 
@@ -120,25 +121,24 @@ int main(void)
 	HAL_GPIO_TogglePin(GPIOB, LED7_Pin);
 
 	// ADC to LCD; TODO: Read POT1 value and write to LCD
-  // uint32_t polled =  pollADC();
-  // sprintf(adc_string, "%u ", polled); //Format voltage as string
-  // writeLCD(adc_string);
+  
 	checkPB();
   if (send) {
-    writeLCD("Send");
+    uint32_t polled =  pollADC();
+    sprintf(adc_string, "Send: %u ", polled); //Format voltage as string
+    writeLCD(adc_string);
+    CCR = ADCtoCCR(polled); //Set CCR to converted value
+	__HAL_TIM_SetCompare(&htim3, TIM_CHANNEL_3, CCR);
   }
   else if (compare) {
-    writeLCD("Compare");
+    sprintf(adc_string, "Compare: %u", count_sent);
+    writeLCD(adc_string);
   }
   else if (receive) {
     writeLCD("Receive");
   } else if (idle) {
     writeLCD("Idle");
   }
-  
-  // Update PWM value; TODO: Get CCR
-  //CCR = ADCtoCCR(polled); //Set CCR to converted value
-	__HAL_TIM_SetCompare(&htim3, TIM_CHANNEL_3, CCR);
 
 	// Wait for delay ms
 	HAL_Delay (delay_t);
