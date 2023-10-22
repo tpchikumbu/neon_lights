@@ -28,7 +28,10 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef struct {
+  uint16_t data;
+  char pkt[16];
+} Packet;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -47,8 +50,10 @@ ADC_HandleTypeDef hadc;
 TIM_HandleTypeDef htim3;
 
 /* USER CODE BEGIN PV */
-const uint8_t  send = 0b0001, receive = 0b0010, compare = 0b0100, idle = 0b0000, reset = 0b1000;
-uint8_t mode = 0b1000;
+const uint8_t  send = 0b0001, receive = 0b0010, compare = 0b0100, idle = 0b0000, human = 0b1000;
+uint8_t mode = 0b0000;
+
+uint16_t sample = 0;
 
 uint32_t count_sent = 0; count_recv = 0;
 uint32_t prev_millis = 0;
@@ -67,6 +72,7 @@ static void MX_TIM3_Init(void);
 
 /* USER CODE BEGIN PFP */
 void checkPB(void);
+uint16_t package(uint16_t data, uint16_t comp);
 void EXTI0_1_IRQHandler(void);
 void writeLCD(char *char_in);
 uint32_t pollADC(void);
@@ -144,8 +150,8 @@ int main(void)
       writeLCD(adc_string);
       break;
     
-    case reset:
-      writeLCD("Reset");
+    case human:
+      writeLCD("Readable");
       break;
 
     default:
@@ -372,19 +378,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
 
-  /*Init other pins with same values*/
-  GPIO_InitStruct.Pin = LED6_Pin;
-  LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
-  GPIO_InitStruct.Pin = LED5_Pin;
-  LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
-  GPIO_InitStruct.Pin = LED4_Pin;
-  LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
-  GPIO_InitStruct.Pin = LED3_Pin;
-  LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
-  GPIO_InitStruct.Pin = LED2_Pin;
-  LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
-  GPIO_InitStruct.Pin = LED1_Pin;
-  LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
 /* USER CODE BEGIN MX_GPIO_Init_2 */
   HAL_NVIC_SetPriority(EXTI0_1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI0_1_IRQn);
@@ -397,10 +390,8 @@ void EXTI0_1_IRQHandler(void)
 	// TODO: Add code to switch LED7 delay frequency
   curr_millis = HAL_GetTick(); //Get current time on system clock
   if ((delay_t == 500) && (curr_millis - prev_millis >= 350)) { //Wait 500ms between presses
-    delay_t = 1000; //Period for 1Hz
+    mode = (0b1111 & ~(GPIOA -> IDR));
   }
-	else delay_t = 500; //Period for 2Hz
-
   prev_millis = curr_millis;
 
 	HAL_GPIO_EXTI_IRQHandler(Button0_Pin); // Clear interrupt flags
@@ -433,6 +424,22 @@ uint32_t ADCtoCCR(uint32_t adc_val){
   // TODO: Calculate CCR val using an appropriate equation
 	uint32_t val = adc_val * (47999/4096);  // CCR = ADC * (ARR/n)
 	return val;
+}
+
+// Create a data packet according to specified protocol
+uint16_t package(uint16_t data, uint16_t comp){
+  uint16_t packed = 0b1000000000000001;
+  packed |= (comp << 14);
+  packed |= (data << 2);
+  //Calculate parity with even parity system
+  uint16_t parity = 0;
+  while (data) { //Check LSB and shift right
+    parity += data & 1; 
+    data >>= 1;
+  }
+  parity %= 2;
+  packed |= (parity << 1);
+  return packed;
 }
 
 void ADC1_COMP_IRQHandler(void)
