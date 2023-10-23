@@ -38,6 +38,9 @@ typedef struct {
 /* USER CODE BEGIN PD */
 #define TRUE 1
 #define FALSE 0
+#define NS 128       // Number of samples in LUT
+#define TIM2CLK 8000000  // STM Clock frequency
+#define F_SIGNAL 50
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -48,24 +51,48 @@ typedef struct {
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim2;
+DMA_HandleTypeDef hdma_tim2_ch1;
 
 /* USER CODE BEGIN PV */
 const uint8_t  send = 0b0001, receive = 0b0010, compare = 0b0100, idle = 0b0000, human = 0b1000;
 uint8_t mode = 0b0000;
 
+uint32_t Sin_LUT[NS] = {
+  512,537,562,587,611,636,660,684,707,730,
+  753,774,796,816,836,855,873,890,907,922,
+  937,950,963,974,984,993,1001,1008,1013,1017,
+  1021,1022,1023,1022,1021,1017,1013,1008,1001,993,
+  984,974,963,950,937,922,907,890,873,855,
+  836,816,796,774,753,730,707,684,660,636,
+  611,587,562,537,512,486,461,436,412,387,
+  363,339,316,293,270,249,227,207,187,168,
+  150,133,116,101,86,73,60,49,39,30,
+  22,15,10,6,2,1,0,1,2,6,
+  10,15,22,30,39,49,60,73,86,101,
+  116,133,150,168,187,207,227,249,270,293,
+  316,339,363,387,412,436,461,486
+};
+
 uint16_t count_sent = 0; count_recv = 0;
 uint32_t prev_millis = 0;
 uint32_t curr_millis = 0;
-uint32_t delay_t = 50; // Initialise delay to 500ms
+uint32_t delay_t = 50; // Initialise delay to 50ms
 
 uint32_t adc_val;       //Value read from ADC
 char adc_string[16];    //Printable string
+
+uint32_t TIM2_Ticks = (uint32_t) (TIM2CLK/(F_SIGNAL*NS)); // How often to write new LUT value
+uint32_t DestAddress = (uint32_t) &(TIM3->CCR3); // Write LUT TO TIM3->CCR3 to modify PWM duty cycle
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ADC_Init(void);
+static void MX_DMA_Init(void);
+static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 
 /* USER CODE BEGIN PFP */
@@ -101,6 +128,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+  init_LCD();
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -112,14 +140,21 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_ADC_Init();
+  MX_DMA_Init();
+  MX_TIM2_Init();
   MX_TIM3_Init();
 
   /* USER CODE BEGIN 2 */
-  init_LCD();
   Packet out_pkt, in_pkt;
   // PWM setup
   uint32_t CCR = 0;
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3); // Start PWM on TIM3 Channel 3
+  
+  HAL_TIM_OC_Start(&htim2, TIM_CHANNEL_1);
+
+  HAL_DMA_Start_IT(&hdma_tim2_ch1, Sin_LUT, DestAddress, 32);
+  
+  __HAL_TIM_ENABLE_DMA(&htim2, TIM_DMA_CC1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -298,6 +333,64 @@ static void MX_ADC_Init(void)
 }
 
 /**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 0;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = TIM2_Ticks - 1;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_OC_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_TIMING;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_OC_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
   * @brief TIM3 Initialization Function
   * @param None
   * @retval None
@@ -312,7 +405,7 @@ static void MX_TIM3_Init(void)
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
-  TIM_IC_InitTypeDef sConfigIC = {0};
+  //TIM_IC_InitTypeDef sConfigIC = {0};
 
 
   /* USER CODE BEGIN TIM3_Init 1 */
@@ -321,9 +414,9 @@ static void MX_TIM3_Init(void)
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 0;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 47999;
+  htim3.Init.Period = 1023;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
   {
     Error_Handler();
@@ -355,6 +448,22 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 2 */
   HAL_TIM_MspPostInit(&htim3);
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel4_5_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel4_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel4_5_IRQn);
 
 }
 
@@ -424,9 +533,16 @@ void EXTI0_1_IRQHandler(void)
 {
 	// TODO: Add code to switch LED7 delay frequency
   curr_millis = HAL_GetTick(); //Get current time on system clock
-  if ((delay_t == 500) && (curr_millis - prev_millis >= 350)) { //Wait 500ms between presses
+  if (curr_millis - prev_millis >= 350) { //Wait 500ms between presses
     mode = (0b1111 & ~(GPIOA -> IDR));
   }
+
+	__HAL_TIM_DISABLE_DMA(&htim2, TIM_DMA_CC1);
+  HAL_DMA_Abort_IT(&hdma_tim2_ch1);
+
+  HAL_DMA_Start_IT(&hdma_tim2_ch1, Sin_LUT, DestAddress, NS);
+  __HAL_TIM_ENABLE_DMA(&htim2, TIM_DMA_CC1);
+
   prev_millis = curr_millis;
 
 	HAL_GPIO_EXTI_IRQHandler(Button0_Pin); // Clear interrupt flags
