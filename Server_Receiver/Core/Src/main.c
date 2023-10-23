@@ -102,6 +102,7 @@ uint16_t package(uint16_t data, uint16_t comp);
 uint16_t unpackage(uint16_t data);
 void listen(Packet pkt);
 
+void TIM3_IRQHandler(void);
 void EXTI0_1_IRQHandler(void);
 void writeLCD(char *char_in);
 uint32_t pollADC(void);
@@ -141,14 +142,14 @@ int main(void)
   MX_GPIO_Init();
   MX_ADC_Init();
   MX_DMA_Init();
-  MX_TIM2_Init();
-  MX_TIM3_Init();
+  MX_TIM2_Init(); //Output compare
+  MX_TIM3_Init(); //Input capture
 
   /* USER CODE BEGIN 2 */
   Packet out_pkt, in_pkt;
   // PWM setup
   uint32_t CCR = 0;
-  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3); // Start PWM on TIM3 Channel 3
+  HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1); // Start IC on TIM3 Channel 3
   
   HAL_TIM_OC_Start(&htim2, TIM_CHANNEL_1);
 
@@ -333,7 +334,7 @@ static void MX_ADC_Init(void)
 }
 
 /**
-  * @brief TIM2 Initialization Function
+  * @brief TIM2 OC Initialization Function
   * @param None
   * @retval None
   */
@@ -391,7 +392,7 @@ static void MX_TIM2_Init(void)
 }
 
 /**
-  * @brief TIM3 Initialization Function
+  * @brief TIM3 IC Initialization Function
   * @param None
   * @retval None
   */
@@ -404,7 +405,7 @@ static void MX_TIM3_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
+  TIM_IC_InitTypeDef sConfigIC = {0};
   //TIM_IC_InitTypeDef sConfigIC = {0};
 
 
@@ -417,16 +418,12 @@ static void MX_TIM3_Init(void)
   htim3.Init.Period = 1023;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  if (HAL_TIM_IC_Init(&htim3) != HAL_OK)
   {
     Error_Handler();
   }
   sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
   if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
   {
     Error_Handler();
   }
@@ -436,16 +433,17 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
+  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
+  sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
+  sConfigIC.ICFilter = 0;
+  if (HAL_TIM_IC_ConfigChannel(&htim3, &sConfigIC, TIM_CHANNEL_3) != HAL_OK)
   {
     Error_Handler();
   }
   /* USER CODE BEGIN TIM3_Init 2 */
-
+  
   /* USER CODE END TIM3_Init 2 */
   HAL_TIM_MspPostInit(&htim3);
 
@@ -488,6 +486,7 @@ static void MX_GPIO_Init(void)
   LL_GPIO_ResetOutputPin(LED7_GPIO_Port, LED7_Pin);
   LL_GPIO_ResetOutputPin(LED7_GPIO_Port, LED3_Pin);
   LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_7);
+  LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_8);
 
   /**/
   LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTA, LL_SYSCFG_EXTI_LINE0);
@@ -497,13 +496,13 @@ static void MX_GPIO_Init(void)
   LL_GPIO_SetPinPull(Button0_GPIO_Port, Button1_Pin, LL_GPIO_PULL_UP);
   LL_GPIO_SetPinPull(Button0_GPIO_Port, Button2_Pin, LL_GPIO_PULL_UP);
   LL_GPIO_SetPinPull(Button0_GPIO_Port, Button3_Pin, LL_GPIO_PULL_UP);
-  LL_GPIO_SetPinPull(GPIOA, LL_GPIO_PIN_7, LL_GPIO_PULL_UP);
+  //LL_GPIO_SetPinPull(GPIOA, LL_GPIO_PIN_7, LL_GPIO_PULL_UP);
   /**/
   LL_GPIO_SetPinMode(Button0_GPIO_Port, Button0_Pin, LL_GPIO_MODE_INPUT);
   LL_GPIO_SetPinMode(Button0_GPIO_Port, Button1_Pin, LL_GPIO_MODE_INPUT);
   LL_GPIO_SetPinMode(Button0_GPIO_Port, Button2_Pin, LL_GPIO_MODE_INPUT);
   LL_GPIO_SetPinMode(Button0_GPIO_Port, Button3_Pin, LL_GPIO_MODE_INPUT);
-  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_7, LL_GPIO_MODE_OUTPUT);
+  //LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_7, LL_GPIO_MODE_OUTPUT);
 
   /**/
   EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_0;
@@ -512,15 +511,29 @@ static void MX_GPIO_Init(void)
   EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
   LL_EXTI_Init(&EXTI_InitStruct);
 
-  /**/
-  GPIO_InitStruct.Pin = LED7_Pin;
+  /* Output LED */
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_3;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
   GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
-  LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
-  GPIO_InitStruct.Pin = LED3_Pin;
-  LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
+  LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /* Output Compare */
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_7;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /* Input Capture */
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_8;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Alternate = GPIO_AF1_TIM3;
+  LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
   HAL_NVIC_SetPriority(EXTI0_1_IRQn, 0, 0);
@@ -528,6 +541,20 @@ static void MX_GPIO_Init(void)
 /* USER CODE END MX_GPIO_Init_2 */
 }
 
+/* Handle TIM3 interrupt */
+void TIM3_IRQHandler(void) {
+  //Do stuff
+  
+  __HAL_TIM_CLEAR_IT(&htim3, TIM_IT_CC1);
+}
+
+/* Handle Input Capture */
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
+  if (htim->Instance == TIM3) {
+    /* code */
+  }
+  
+}
 /* USER CODE BEGIN 4 */
 void EXTI0_1_IRQHandler(void)
 {
@@ -540,7 +567,7 @@ void EXTI0_1_IRQHandler(void)
 	__HAL_TIM_DISABLE_DMA(&htim2, TIM_DMA_CC1);
   HAL_DMA_Abort_IT(&hdma_tim2_ch1);
 
-  HAL_DMA_Start_IT(&hdma_tim2_ch1, Sin_LUT, DestAddress, NS);
+  HAL_DMA_Start_IT(&hdma_tim2_ch1, &Sin_LUT, DestAddress, NS);
   __HAL_TIM_ENABLE_DMA(&htim2, TIM_DMA_CC1);
 
   prev_millis = curr_millis;
@@ -615,7 +642,7 @@ void transmit(Packet packet) {
     ++i;
   }
   //Correct end of packet
-  delay_t <<= 2; //Slow transmission of end bit
+  //delay_t <<= 2; //Slow transmission of end bit
   if (packet.pkt[i] == '1') {
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_SET);
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET);
@@ -624,19 +651,21 @@ void transmit(Packet packet) {
   } else { //Flash LED for invalid packet
     while (i > 0) {
       HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_3);
-      HAL_Delay(delay_t/6);
+      HAL_Delay(delay_t);
       --i;
     }
   }
   
   //Return to original values
-  delay_t >>=1;
+  //delay_t >>=1;
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET); 
   
 }
 
 void listen(Packet pkt){
+uint32_t capturedValue = HAL_TIM_ReadCapturedValue(&htim3, TIM_CHANNEL_3);
+
   pkt.data = 0;
   while (!(pkt.data & 0b1000000000000000))
   {
@@ -651,10 +680,6 @@ void listen(Packet pkt){
   itoa(pkt.data, pkt.pkt, 2);
   lcd_command(LINE_TWO);
   lcd_putstring(pkt.pkt);
-  while (1)
-  {
-    /* code */
-  }
   
 }
 
