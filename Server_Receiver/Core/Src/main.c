@@ -72,6 +72,7 @@ static void MX_TIM3_Init(void);
 void checkPB(void);
 void transmit(Packet packet);
 uint16_t package(uint16_t data, uint16_t comp);
+uint16_t unpackage(uint16_t data);
 
 void EXTI0_1_IRQHandler(void);
 void writeLCD(char *char_in);
@@ -170,7 +171,6 @@ int main(void)
       break;
     
     case human:
-      writeLCD("Readable");
       if (delay_t == 50) {
         writeLCD("Mode: Slow");
         delay_t = 500;
@@ -374,6 +374,7 @@ static void MX_GPIO_Init(void)
   /**/
   LL_GPIO_ResetOutputPin(LED7_GPIO_Port, LED7_Pin);
   LL_GPIO_ResetOutputPin(LED7_GPIO_Port, LED3_Pin);
+  LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_7);
 
   /**/
   LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTA, LL_SYSCFG_EXTI_LINE0);
@@ -383,12 +384,14 @@ static void MX_GPIO_Init(void)
   LL_GPIO_SetPinPull(Button0_GPIO_Port, Button1_Pin, LL_GPIO_PULL_UP);
   LL_GPIO_SetPinPull(Button0_GPIO_Port, Button2_Pin, LL_GPIO_PULL_UP);
   LL_GPIO_SetPinPull(Button0_GPIO_Port, Button3_Pin, LL_GPIO_PULL_UP);
+  LL_GPIO_SetPinPull(GPIOA, LL_GPIO_PIN_7, LL_GPIO_PULL_UP);
 
   /**/
   LL_GPIO_SetPinMode(Button0_GPIO_Port, Button0_Pin, LL_GPIO_MODE_INPUT);
   LL_GPIO_SetPinMode(Button0_GPIO_Port, Button1_Pin, LL_GPIO_MODE_INPUT);
   LL_GPIO_SetPinMode(Button0_GPIO_Port, Button2_Pin, LL_GPIO_MODE_INPUT);
   LL_GPIO_SetPinMode(Button0_GPIO_Port, Button3_Pin, LL_GPIO_MODE_INPUT);
+  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_7, LL_GPIO_MODE_INPUT);
 
   /**/
   EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_0;
@@ -481,7 +484,7 @@ void transmit(Packet packet) {
       HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET);
     } else {
       HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
-      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET);      
+      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET);   
     }
     if (i==2) { //Increase transmission frequency after checkpoint bit
       delay_t >>= 1;
@@ -494,7 +497,7 @@ void transmit(Packet packet) {
   if (packet.pkt[i] == '1') {
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_SET);
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET);
-    ++count_sent;
+    (packet.pkt[1] == '1') ? ++count_sent : 0 ;
     HAL_Delay(delay_t);
   } else { //Flash LED for invalid packet
     while (i > 0) {
