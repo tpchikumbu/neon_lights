@@ -53,12 +53,10 @@ TIM_HandleTypeDef htim3;
 const uint8_t  send = 0b0001, receive = 0b0010, compare = 0b0100, idle = 0b0000, human = 0b1000;
 uint8_t mode = 0b0000;
 
-uint16_t sample = 0;
-
-uint32_t count_sent = 0; count_recv = 0;
+uint16_t count_sent = 0; count_recv = 0;
 uint32_t prev_millis = 0;
 uint32_t curr_millis = 0;
-uint32_t delay_t = 500; // Initialise delay to 500ms
+uint32_t delay_t = 50; // Initialise delay to 500ms
 
 uint32_t adc_val;       //Value read from ADC
 char adc_string[16];    //Printable string
@@ -72,7 +70,9 @@ static void MX_TIM3_Init(void);
 
 /* USER CODE BEGIN PFP */
 void checkPB(void);
+void transmit(Packet packet);
 uint16_t package(uint16_t data, uint16_t comp);
+
 void EXTI0_1_IRQHandler(void);
 void writeLCD(char *char_in);
 uint32_t pollADC(void);
@@ -114,7 +114,7 @@ int main(void)
 
   /* USER CODE BEGIN 2 */
   init_LCD();
-
+  Packet out_pkt, in_pkt;
   // PWM setup
   uint32_t CCR = 0;
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3); // Start PWM on TIM3 Channel 3
@@ -134,9 +134,20 @@ int main(void)
       break;
 
     case send:
+      //Sample ADC and show value on LCD
       uint32_t polled =  pollADC();
-      sprintf(adc_string, "Send: %u ", polled); //Format voltage as string
+      sprintf(adc_string, "Send: %u ", polled);
       writeLCD(adc_string);
+
+      //Package sampled data for transmission
+      out_pkt.data = package(polled, 0);
+      itoa(out_pkt.data, out_pkt.pkt, 2);
+      lcd_command(LINE_TWO);
+      lcd_putstring(out_pkt.pkt);
+
+      //Transmit packaged data to LED and GPIO
+      transmit(out_pkt);
+      
       CCR = ADCtoCCR(polled); //Set CCR to converted value
       __HAL_TIM_SetCompare(&htim3, TIM_CHANNEL_3, CCR);
       break;
@@ -148,10 +159,25 @@ int main(void)
     case compare:
       sprintf(adc_string, "Compare: %u", count_sent);
       writeLCD(adc_string);
+      //Package sampled data for transmission
+      out_pkt.data = package(count_sent, 1);
+      itoa(out_pkt.data, out_pkt.pkt, 2);
+      lcd_command(LINE_TWO);
+      lcd_putstring(out_pkt.pkt);
+
+      //Transmit packaged data to LED and GPIO
+      transmit(out_pkt);
       break;
     
     case human:
       writeLCD("Readable");
+      if (delay_t == 50) {
+        writeLCD("Mode: Slow");
+        delay_t = 500;
+      } else {
+        writeLCD("Mode: Fast");
+        delay_t = 50;
+      }
       break;
 
     default:
@@ -347,6 +373,7 @@ static void MX_GPIO_Init(void)
 
   /**/
   LL_GPIO_ResetOutputPin(LED7_GPIO_Port, LED7_Pin);
+  LL_GPIO_ResetOutputPin(LED7_GPIO_Port, LED3_Pin);
 
   /**/
   LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTA, LL_SYSCFG_EXTI_LINE0);
@@ -376,6 +403,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
+  GPIO_InitStruct.Pin = LED3_Pin;
   LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -428,7 +457,7 @@ uint32_t ADCtoCCR(uint32_t adc_val){
 
 // Create a data packet according to specified protocol
 uint16_t package(uint16_t data, uint16_t comp){
-  uint16_t packed = 0b1000000000000001;
+  uint16_t packed = 0b1000000000000001; //Template with start and end bits set
   packed |= (comp << 14);
   packed |= (data << 2);
   //Calculate parity with even parity system
@@ -440,6 +469,46 @@ uint16_t package(uint16_t data, uint16_t comp){
   parity %= 2;
   packed |= (parity << 1);
   return packed;
+}
+
+// Send data packet to LED3 and PA7
+void transmit(Packet packet) {
+  size_t i = 0;
+  //Send first 15 bits of packet
+  while (i < 15) {
+    if (packet.pkt[i] == '1'){
+      HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET);
+    } else {
+      HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
+      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET);      
+    }
+    if (i==2) { //Increase transmission frequency after checkpoint bit
+      delay_t >>= 1;
+    }
+    HAL_Delay(delay_t);
+    ++i;
+  }
+  //Correct end of packet
+  delay_t <<= 2; //Slow transmission of end bit
+  if (packet.pkt[i] == '1') {
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET);
+    ++count_sent;
+    HAL_Delay(delay_t);
+  } else { //Flash LED for invalid packet
+    while (i > 0) {
+      HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_3);
+      HAL_Delay(delay_t/6);
+      --i;
+    }
+  }
+  
+  //Return to original values
+  delay_t >>=1;
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET); 
+  
 }
 
 void ADC1_COMP_IRQHandler(void)
