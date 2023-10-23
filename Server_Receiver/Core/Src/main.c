@@ -310,6 +310,8 @@ static void MX_TIM3_Init(void)
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
+  TIM_IC_InitTypeDef sConfigIC = {0};
+
 
   /* USER CODE BEGIN TIM3_Init 1 */
 
@@ -385,13 +387,12 @@ static void MX_GPIO_Init(void)
   LL_GPIO_SetPinPull(Button0_GPIO_Port, Button2_Pin, LL_GPIO_PULL_UP);
   LL_GPIO_SetPinPull(Button0_GPIO_Port, Button3_Pin, LL_GPIO_PULL_UP);
   LL_GPIO_SetPinPull(GPIOA, LL_GPIO_PIN_7, LL_GPIO_PULL_UP);
-
   /**/
   LL_GPIO_SetPinMode(Button0_GPIO_Port, Button0_Pin, LL_GPIO_MODE_INPUT);
   LL_GPIO_SetPinMode(Button0_GPIO_Port, Button1_Pin, LL_GPIO_MODE_INPUT);
   LL_GPIO_SetPinMode(Button0_GPIO_Port, Button2_Pin, LL_GPIO_MODE_INPUT);
   LL_GPIO_SetPinMode(Button0_GPIO_Port, Button3_Pin, LL_GPIO_MODE_INPUT);
-  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_7, LL_GPIO_MODE_INPUT);
+  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_7, LL_GPIO_MODE_OUTPUT);
 
   /**/
   EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_0;
@@ -474,6 +475,9 @@ uint16_t package(uint16_t data, uint16_t comp){
   return packed;
 }
 
+uint16_t unpackage(uint16_t data){
+  
+}
 // Send data packet to LED3 and PA7
 void transmit(Packet packet) {
   size_t i = 0;
