@@ -73,6 +73,7 @@ void checkPB(void);
 void transmit(Packet packet);
 uint16_t package(uint16_t data, uint16_t comp);
 uint16_t unpackage(uint16_t data);
+void listen(Packet pkt);
 
 void EXTI0_1_IRQHandler(void);
 void writeLCD(char *char_in);
@@ -154,7 +155,8 @@ int main(void)
       break;
 
     case receive:
-      writeLCD("Receive");
+      writeLCD("Receive: ");
+      listen(in_pkt);
       break;
 
     case compare:
@@ -491,7 +493,7 @@ void transmit(Packet packet) {
       HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET);   
     }
     if (i==2) { //Increase transmission frequency after checkpoint bit
-      delay_t >>= 1;
+      //delay_t >>= 1;
     }
     HAL_Delay(delay_t);
     ++i;
@@ -501,7 +503,7 @@ void transmit(Packet packet) {
   if (packet.pkt[i] == '1') {
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_SET);
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET);
-    (packet.pkt[1] == '1') ? ++count_sent : 0 ;
+    (packet.pkt[1] == '1') ? 0 : ++count_sent;
     HAL_Delay(delay_t);
   } else { //Flash LED for invalid packet
     while (i > 0) {
@@ -515,6 +517,28 @@ void transmit(Packet packet) {
   delay_t >>=1;
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET); 
+  
+}
+
+void listen(Packet pkt){
+  pkt.data = 0;
+  while (!(pkt.data & 0b1000000000000000))
+  {
+    GPIO_PinState val = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_7);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, val);
+    pkt.data = (pkt.data << 1)|val;
+  }
+  uint16_t temp = (pkt.data << 2) >> 4;
+  itoa(temp, pkt.pkt, 10);
+  lcd_putstring(pkt.pkt);
+  
+  itoa(pkt.data, pkt.pkt, 2);
+  lcd_command(LINE_TWO);
+  lcd_putstring(pkt.pkt);
+  while (1)
+  {
+    /* code */
+  }
   
 }
 
