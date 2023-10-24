@@ -81,6 +81,7 @@ static void MX_TIM3_Init(void);
 
 /* USER CODE BEGIN PFP */
 void EXTI0_1_IRQHandler(void);
+void EXTI2_3_IRQHandler(void);
 void writeLCD(char *char_in);
 uint32_t pollADC(void);
 uint32_t ADCtoCCR(uint32_t adc_val);
@@ -259,6 +260,57 @@ int main(void)
   }
 }
 
+void sampleAndSend(void) {
+  HAL_GPIO_WritePin(GPIOB, LED7_Pin, GPIO_PIN_SET); // Turn on LED7
+
+  // get the value and package it
+  uint32_t pollVal = pollADC(); // Read ADC value during polling
+  uint16_t message = package(pollVal, SAMPLE_TRANSMIT);
+
+  // write the data to the lcd
+  char* bit_string = intToString(message);
+  lcd_command(CLEAR); // Clear LCD
+  lcd_putstring("Sample TMT:");
+  lcd_command(LINE_TWO);
+  lcd_putstring(bit_string);
+
+  char* lcd_print = malloc(16 * sizeof(char));
+  sprintf(lcd_print, "Sample: %u", pollVal); //Format voltage as string
+  // transmit the message
+  transmit(message, lcd_print);
+  HAL_GPIO_WritePin(GPIOB, LED6_Pin, GPIO_PIN_RESET); // Turn off LED6
+  HAL_GPIO_WritePin(GPIOB, Transmit_Pin, GPIO_PIN_RESET); // take the transmit pin low
+
+  samples_sent++;
+  // stop transmitting for 2 seconds
+  HAL_Delay(2000);
+}
+
+void countAndSend(void) {
+  HAL_GPIO_WritePin(GPIOB, LED7_Pin, GPIO_PIN_SET); // Turn on LED7
+
+  // get the value and package it
+  uint32_t count = samples_sent;
+  uint16_t message = package(count, COUNT_TRANSMIT);
+
+  // write the data to the lcd
+  char* bit_string = intToString(message);
+  lcd_command(CLEAR); // Clear LCD
+  lcd_putstring("Count Check:");
+  lcd_command(LINE_TWO);
+  lcd_putstring(bit_string);
+
+  char* lcd_print = malloc(16 * sizeof(char));
+  sprintf(lcd_print, "Count: %u", count); //Format voltage as string
+  // transmit the message
+  transmit(message, lcd_print);
+
+  HAL_GPIO_WritePin(GPIOB, LED6_Pin, GPIO_PIN_RESET); // Turn off LED6
+  HAL_GPIO_WritePin(GPIOB, Transmit_Pin, GPIO_PIN_RESET); // take the transmit pin low
+  // stop transmitting for 2 seconds
+  HAL_Delay(2000);
+}
+
 void transmitting_mode() {
   // PWM setup
   uint32_t CCR = 0;
@@ -273,55 +325,12 @@ void transmitting_mode() {
 
     // if PB6 pressed, toggle LED7 
     if (HAL_GPIO_ReadPin(GPIOA, Button1_Pin) == GPIO_PIN_RESET) {
-      HAL_GPIO_WritePin(GPIOB, LED7_Pin, GPIO_PIN_SET); // Turn on LED7
-
-      // get the value and package it
-      uint32_t pollVal = pollADC(); // Read ADC value during polling
-      uint16_t message = package(pollVal, SAMPLE_TRANSMIT);
-
-      // write the data to the lcd
-      char* bit_string = intToString(message);
-      lcd_command(CLEAR); // Clear LCD
-      lcd_putstring("Sample TMT:");
-      lcd_command(LINE_TWO);
-      lcd_putstring(bit_string);
-
-      char* lcd_print = malloc(16 * sizeof(char));
-      sprintf(lcd_print, "Sample: %u", pollVal); //Format voltage as string
-      // transmit the message
-      transmit(message, lcd_print);
-      HAL_GPIO_WritePin(GPIOB, LED6_Pin, GPIO_PIN_RESET); // Turn off LED6
-      HAL_GPIO_WritePin(GPIOB, Transmit_Pin, GPIO_PIN_RESET); // take the transmit pin low
-
-      samples_sent++;
-      // stop transmitting for 2 seconds
-      HAL_Delay(2000);
+      sampleAndSend();
       continue;
     }
 
     if (HAL_GPIO_ReadPin(GPIOA, Button2_Pin) == GPIO_PIN_RESET) {
-      HAL_GPIO_WritePin(GPIOB, LED7_Pin, GPIO_PIN_SET); // Turn on LED7
-
-      // get the value and package it
-      uint32_t count = samples_sent;
-      uint16_t message = package(count, COUNT_TRANSMIT);
-
-      // write the data to the lcd
-      char* bit_string = intToString(message);
-      lcd_command(CLEAR); // Clear LCD
-      lcd_putstring("Count Check:");
-      lcd_command(LINE_TWO);
-      lcd_putstring(bit_string);
-
-      char* lcd_print = malloc(16 * sizeof(char));
-      sprintf(lcd_print, "Count: %u", count); //Format voltage as string
-      // transmit the message
-      transmit(message, lcd_print);
-
-      HAL_GPIO_WritePin(GPIOB, LED6_Pin, GPIO_PIN_RESET); // Turn off LED6
-      HAL_GPIO_WritePin(GPIOB, Transmit_Pin, GPIO_PIN_RESET); // take the transmit pin low
-      // stop transmitting for 2 seconds
-      HAL_Delay(2000);
+      countAndSend();
       continue;
     }
 
@@ -349,21 +358,31 @@ void transmitting_mode() {
   }
 }
 
+
+void toggleListen(void) {
+  // if led7 is on then turn it off and show that the device is not listening
+  if (HAL_GPIO_ReadPin(GPIOB, LED7_Pin) == GPIO_PIN_SET) {
+    HAL_GPIO_TogglePin(GPIOB, LED7_Pin);
+    lcd_command(CLEAR);
+    lcd_putstring("Receive Mode:");
+    lcd_command(LINE_TWO);
+    lcd_putstring("Off");
+  } else {
+    // if led7 is off then turn it on and show that the device is listening
+    HAL_GPIO_TogglePin(GPIOB, LED7_Pin);
+    lcd_command(CLEAR);
+    lcd_putstring("Receive Mode:");
+    lcd_command(LINE_TWO);
+    lcd_putstring("Listening...");
+  }
+}
 void receiving_mode() {
   while (1) {
     // do nothing until button 1 is pressed
     while (1)
     {
       if (HAL_GPIO_ReadPin(GPIOA, Button1_Pin) == GPIO_PIN_RESET) {
-        // toggle the LED 7 to show that the device is listening
-        HAL_GPIO_TogglePin(GPIOB, LED7_Pin);
-
-        // put in line two LCD that the device is actively listening
-        lcd_command(CLEAR);
-        lcd_putstring("Receive Mode:");
-        lcd_command(LINE_TWO);
-        lcd_putstring("Listening...");
-
+        toggleListen();
         break;
       }
     }
@@ -372,14 +391,7 @@ void receiving_mode() {
     while (1) {
       // press the button again to stop listening
       if (HAL_GPIO_ReadPin(GPIOA, Button1_Pin) == GPIO_PIN_RESET) {
-        // toggle the LED 7 to show that the device is no longer listening
-        HAL_GPIO_TogglePin(GPIOB, LED7_Pin);
-
-        // put in line two LCD that the device is not actively listening
-        lcd_command(CLEAR);
-        lcd_putstring("Receive Mode:");
-        lcd_command(LINE_TWO);
-        lcd_putstring("Off");
+        toggleListen();
         break;
       }
       // listen if there is a transmission
@@ -455,6 +467,7 @@ void receiving_mode() {
     }
   }
 }
+
 /**
   * @brief System Clock Configuration
   * @retval None
