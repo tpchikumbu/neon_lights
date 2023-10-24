@@ -71,14 +71,36 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define Button0_Pin LL_GPIO_PIN_0
 #define Button0_GPIO_Port GPIOA
-#define Button1_Pin LL_GPIO_PIN_1
+
+// button 1 for sending a sample or toggling listen mode
+#define Button1_Pin LL_GPIO_PIN_1 
 #define Button1_GPIO_Port GPIOA
-#define Button2_Pin LL_GPIO_PIN_2
+
+// button 2 for sending a count
+#define Button2_Pin LL_GPIO_PIN_2 
 #define Button2_GPIO_Port GPIOA
-#define Button3_Pin LL_GPIO_PIN_3
-#define Button3_GPIO_Port GPIOA
+
 #define LED7_Pin LL_GPIO_PIN_7
 #define LED7_GPIO_Port GPIOB
+#define LED6_Pin LL_GPIO_PIN_6
+#define LED6_GPIO_Port GPIOB
+
+// Set gpio pin 3 to be the output for the transmit signal
+#define Transmit_Pin LL_GPIO_PIN_3
+#define Transmit_GPIO_Port GPIOB
+
+// Set gpio pin 4 to be the input for the receive signal
+#define Receive_Pin LL_GPIO_PIN_4
+#define Receive_GPIO_Port GPIOB
+
+
+#define TRASMIT_MODE 0
+#define RECEIVE_MODE 1
+
+#define SAMPLE_TRANSMIT 0
+#define COUNT_TRANSMIT 1
+
+#define COMM_DELAY 500
 
 /* USER CODE BEGIN Private defines */
 
