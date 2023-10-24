@@ -72,7 +72,7 @@ void Error_Handler(void);
 #define Button0_Pin LL_GPIO_PIN_0
 #define Button0_GPIO_Port GPIOA
 
-// button 1 for sending a sample or activating listen mode
+// button 1 for sending a sample or toggling listen mode
 #define Button1_Pin LL_GPIO_PIN_1 
 #define Button1_GPIO_Port GPIOA
 
@@ -100,7 +100,7 @@ void Error_Handler(void);
 #define SAMPLE_TRANSMIT 0
 #define COUNT_TRANSMIT 1
 
-#define COMM_DELAY 1000
+#define COMM_DELAY 500
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */
