@@ -47,6 +47,7 @@ typedef struct {
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc;
+
 TIM_HandleTypeDef htim3;
 
 /* USER CODE BEGIN PV */
@@ -67,7 +68,6 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ADC_Init(void);
 static void MX_TIM3_Init(void);
-
 /* USER CODE BEGIN PFP */
 void checkPB(void);
 void transmit(Packet packet);
@@ -76,6 +76,7 @@ uint16_t unpackage(uint16_t data);
 void listen(Packet pkt);
 
 void EXTI0_1_IRQHandler(void);
+void EXTI2_3_IRQHandler(void);
 void writeLCD(char *char_in);
 uint32_t pollADC(void);
 uint32_t ADCtoCCR(uint32_t adc_val);
@@ -113,7 +114,6 @@ int main(void)
   MX_GPIO_Init();
   MX_ADC_Init();
   MX_TIM3_Init();
-
   /* USER CODE BEGIN 2 */
   init_LCD();
   Packet out_pkt, in_pkt;
@@ -312,8 +312,6 @@ static void MX_TIM3_Init(void)
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
-  TIM_IC_InitTypeDef sConfigIC = {0};
-
 
   /* USER CODE BEGIN TIM3_Init 1 */
 
@@ -377,27 +375,66 @@ static void MX_GPIO_Init(void)
 
   /**/
   LL_GPIO_ResetOutputPin(LED7_GPIO_Port, LED7_Pin);
-  LL_GPIO_ResetOutputPin(LED7_GPIO_Port, LED3_Pin);
-  LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_7);
 
   /**/
   LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTA, LL_SYSCFG_EXTI_LINE0);
 
   /**/
+  LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTA, LL_SYSCFG_EXTI_LINE1);
+
+  /**/
+  LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTA, LL_SYSCFG_EXTI_LINE2);
+
+  /**/
+  LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTA, LL_SYSCFG_EXTI_LINE3);
+
+  /**/
   LL_GPIO_SetPinPull(Button0_GPIO_Port, Button0_Pin, LL_GPIO_PULL_UP);
-  LL_GPIO_SetPinPull(Button0_GPIO_Port, Button1_Pin, LL_GPIO_PULL_UP);
-  LL_GPIO_SetPinPull(Button0_GPIO_Port, Button2_Pin, LL_GPIO_PULL_UP);
-  LL_GPIO_SetPinPull(Button0_GPIO_Port, Button3_Pin, LL_GPIO_PULL_UP);
-  LL_GPIO_SetPinPull(GPIOA, LL_GPIO_PIN_7, LL_GPIO_PULL_UP);
+
+  /**/
+  LL_GPIO_SetPinPull(Button1_GPIO_Port, Button1_Pin, LL_GPIO_PULL_UP);
+
+  /**/
+  LL_GPIO_SetPinPull(Button2_GPIO_Port, Button2_Pin, LL_GPIO_PULL_UP);
+
+  /**/
+  LL_GPIO_SetPinPull(Button3_GPIO_Port, Button3_Pin, LL_GPIO_PULL_UP);
+
   /**/
   LL_GPIO_SetPinMode(Button0_GPIO_Port, Button0_Pin, LL_GPIO_MODE_INPUT);
-  LL_GPIO_SetPinMode(Button0_GPIO_Port, Button1_Pin, LL_GPIO_MODE_INPUT);
-  LL_GPIO_SetPinMode(Button0_GPIO_Port, Button2_Pin, LL_GPIO_MODE_INPUT);
-  LL_GPIO_SetPinMode(Button0_GPIO_Port, Button3_Pin, LL_GPIO_MODE_INPUT);
-  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_7, LL_GPIO_MODE_OUTPUT);
+
+  /**/
+  LL_GPIO_SetPinMode(Button1_GPIO_Port, Button1_Pin, LL_GPIO_MODE_INPUT);
+
+  /**/
+  LL_GPIO_SetPinMode(Button2_GPIO_Port, Button2_Pin, LL_GPIO_MODE_INPUT);
+
+  /**/
+  LL_GPIO_SetPinMode(Button3_GPIO_Port, Button3_Pin, LL_GPIO_MODE_INPUT);
 
   /**/
   EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_0;
+  EXTI_InitStruct.LineCommand = ENABLE;
+  EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
+  EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
+  LL_EXTI_Init(&EXTI_InitStruct);
+
+  /**/
+  EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_1;
+  EXTI_InitStruct.LineCommand = ENABLE;
+  EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
+  EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
+  LL_EXTI_Init(&EXTI_InitStruct);
+
+  /**/
+  EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_2;
+  EXTI_InitStruct.LineCommand = ENABLE;
+  EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
+  EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
+  LL_EXTI_Init(&EXTI_InitStruct);
+
+  /**/
+  EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_3;
   EXTI_InitStruct.LineCommand = ENABLE;
   EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
   EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
@@ -410,26 +447,68 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
-  GPIO_InitStruct.Pin = LED3_Pin;
-  LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
   HAL_NVIC_SetPriority(EXTI0_1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI0_1_IRQn);
+  HAL_NVIC_SetPriority(EXTI2_3_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
 /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
 void EXTI0_1_IRQHandler(void)
 {
-	// TODO: Add code to switch LED7 delay frequency
-  curr_millis = HAL_GetTick(); //Get current time on system clock
-  if ((delay_t == 500) && (curr_millis - prev_millis >= 350)) { //Wait 500ms between presses
-    mode = (0b1111 & ~(GPIOA -> IDR));
-  }
-  prev_millis = curr_millis;
-
+	curr_millis = HAL_GetTick(); //Get current time on system clock
+	if ((delay_t == 50) && (curr_millis - prev_millis >= 350)) { //Wait 500ms between presses
+		if(__HAL_GPIO_EXTI_GET_FLAG(GPIO_PIN_0))
+		{
+			if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_SET)
+			{
+				// Pin 0 was pressed
+				writeLCD("Pin 0");
+			}
+			__HAL_GPIO_EXTI_CLEAR_FLAG(GPIO_PIN_0);
+		}
+		else if(__HAL_GPIO_EXTI_GET_FLAG(GPIO_PIN_1))
+		{
+			if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1) == GPIO_PIN_SET)
+			{
+				// Pin 1 was pressed
+				writeLCD("Pin 1");
+			}
+			__HAL_GPIO_EXTI_CLEAR_FLAG(GPIO_PIN_1);
+		}
+	}
+	prev_millis = curr_millis;
 	HAL_GPIO_EXTI_IRQHandler(Button0_Pin); // Clear interrupt flags
+}
+
+void EXTI2_3_IRQHandler(void)
+{
+	curr_millis = HAL_GetTick(); //Get current time on system clock
+	if ((delay_t == 50) && (curr_millis - prev_millis >= 350)) { //Wait 500ms between presses
+		if(__HAL_GPIO_EXTI_GET_FLAG(GPIO_PIN_2))
+		{
+			if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == GPIO_PIN_SET)
+			{
+				// Pin 0 was pressed
+				writeLCD("Pin 2");
+			}
+			__HAL_GPIO_EXTI_CLEAR_FLAG(GPIO_PIN_2);
+		}
+		else if(__HAL_GPIO_EXTI_GET_FLAG(GPIO_PIN_3))
+		{
+			if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3) == GPIO_PIN_SET)
+			{
+				// Pin 1 was pressed
+				writeLCD("Pin 3");
+			}
+			__HAL_GPIO_EXTI_CLEAR_FLAG(GPIO_PIN_3);
+		}
+	}
+	prev_millis = curr_millis;
+	HAL_GPIO_EXTI_IRQHandler(Button2_Pin); // Clear interrupt flags
 }
 
 // Check push buttons
