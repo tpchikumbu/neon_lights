@@ -64,7 +64,7 @@ uint32_t adc_val;       //Value read from ADC
 char adc_string[16];    //Printable string
 
 // protocol functions
-void transmit(uint16_t package);
+void transmit(uint16_t package, char* lcd_print);
 void receive();
 uint16_t package(uint32_t polledData, uint8_t mode);
 int package_valid(uint16_t package);
@@ -144,10 +144,13 @@ int package_valid(uint16_t package) {
   return 1;
 }
 
-void transmit(uint16_t package) {
+void transmit(uint16_t package, char* lcd_print) {
   // send one bit to signify start of transmission
   lcd_command(CLEAR);
-  lcd_putstring("Transmitting...");
+  lcd_putstring("Sending: ");
+  lcd_command(LINE_TWO);
+  lcd_putstring(lcd_print);
+
   HAL_GPIO_WritePin(GPIOB, LED6_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(GPIOB, Transmit_Pin, GPIO_PIN_SET);
   HAL_Delay(COMM_DELAY);
@@ -283,8 +286,10 @@ void transmitting_mode() {
       lcd_command(LINE_TWO);
       lcd_putstring(bit_string);
 
+      char* lcd_print = malloc(16 * sizeof(char));
+      sprintf(lcd_print, "Sample: %u", pollVal); //Format voltage as string
       // transmit the message
-      transmit(message);
+      transmit(message, lcd_print);
       HAL_GPIO_WritePin(GPIOB, LED6_Pin, GPIO_PIN_RESET); // Turn off LED6
       HAL_GPIO_WritePin(GPIOB, Transmit_Pin, GPIO_PIN_RESET); // take the transmit pin low
 
@@ -308,8 +313,11 @@ void transmitting_mode() {
       lcd_command(LINE_TWO);
       lcd_putstring(bit_string);
 
+      char* lcd_print = malloc(16 * sizeof(char));
+      sprintf(lcd_print, "Count: %u", count); //Format voltage as string
       // transmit the message
-      transmit(message);
+      transmit(message, lcd_print);
+
       HAL_GPIO_WritePin(GPIOB, LED6_Pin, GPIO_PIN_RESET); // Turn off LED6
       HAL_GPIO_WritePin(GPIOB, Transmit_Pin, GPIO_PIN_RESET); // take the transmit pin low
       // stop transmitting for 2 seconds
@@ -320,8 +328,14 @@ void transmitting_mode() {
     // the idle display showing the value of the potentiometer
     // ADC to LCD; TODO: Read POT1 value and write to LCD
     uint32_t voltage =  pollADC();
-    sprintf(adc_string, "V: %u mV", voltage); //Format voltage as string
-    writeLCD(adc_string);
+    sprintf(adc_string, "Curr Val: %u", voltage); //Format voltage as string
+
+    // write the data to the lcd
+    lcd_command(CLEAR);
+    lcd_putstring("Sampling");
+    lcd_command(LINE_TWO);
+    lcd_putstring(adc_string);
+    // writeLCD(adc_string);
     
     // Update PWM value; TODO: Get CCR
     CCR = ADCtoCCR(voltage); //Set CCR to converted value
@@ -372,6 +386,9 @@ void receiving_mode() {
       // transmission is signified by the LED 6 being on for 1 second
       uint16_t message = 0;
       if (HAL_GPIO_ReadPin(GPIOB, Receive_Pin) == GPIO_PIN_SET) {
+        // clear the LCD
+        lcd_command(CLEAR);
+        lcd_putstring("Receiving...");
         // read the message bit by bit
         for (int i = 15; i >= 0; i--) {
           HAL_Delay(COMM_DELAY);
@@ -395,11 +412,11 @@ void receiving_mode() {
           // if the message is valid, unpack the message
           uint16_t unpacked_message = (message >> 2) & 0x0FFF;
           char* unpacked_string = malloc(16 * sizeof(char));
-          sprintf(unpacked_string, "V: %u mV", unpacked_message); //Format voltage as string
+          sprintf(unpacked_string, "Sample: %u", unpacked_message); //Format voltage as string
           // writeLCD(unpacked_string);
           // write the data to the lcd
           lcd_command(CLEAR);
-          lcd_putstring("Sample RCV:");
+          lcd_putstring("Received Value:");
           lcd_command(LINE_TWO);
           lcd_putstring(unpacked_string);
           HAL_Delay(2000);
@@ -411,17 +428,22 @@ void receiving_mode() {
           // compare the received count with the sent count
           if (unpacked_count == samples_received) {
             lcd_command(CLEAR);
-            lcd_putstring("Count RCV:");
+            lcd_putstring("Count Received");
             lcd_command(LINE_TWO);
             lcd_putstring("Success");
             HAL_Delay(2000);
           } else {
             lcd_command(CLEAR);
-            lcd_putstring("Count RCV:");
+            lcd_putstring("Count Received");
             lcd_command(LINE_TWO);
-            lcd_putstring("Fail");
+            lcd_putstring("Fail. Updating.");
             samples_received = unpacked_count;
-            HAL_Delay(2000);
+            //flashes LED 7 to show that the count is being updated
+            for (int i = 0; i < 8; i++) {
+              HAL_GPIO_TogglePin(GPIOB, LED7_Pin);
+              HAL_Delay(COMM_DELAY/8);
+            }
+            // HAL_Delay(2000);
           }
         }
         // // put in line two LCD that the device is actively listening
