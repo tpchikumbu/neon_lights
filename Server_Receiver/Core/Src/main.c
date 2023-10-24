@@ -28,16 +28,12 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-typedef struct {
-  uint16_t data;
-  char pkt[16];
-} Packet;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define TRUE 1
-#define FALSE 0
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -49,17 +45,32 @@ typedef struct {
 ADC_HandleTypeDef hadc;
 TIM_HandleTypeDef htim3;
 
-/* USER CODE BEGIN PV */
-const uint8_t  send = 0b0001, receive = 0b0010, compare = 0b0100, idle = 0b0000, human = 0b1000;
-uint8_t mode = 0b0000;
+// set the mode for transmission or reception
+uint8_t MODE = TRASMIT_MODE; // 0 = sample, 1 = receive
 
-uint16_t count_sent = 0; count_recv = 0;
-uint32_t prev_millis = 0;
-uint32_t curr_millis = 0;
-uint32_t delay_t = 50; // Initialise delay to 500ms
+// initialise the samples received and the samples sent
+uint32_t samples_received = 0;
+uint32_t samples_sent = 0;
+
+/* USER CODE BEGIN PV */
+
+uint32_t ticks_before = 0;
+uint32_t ticks_currrent = 0;
+uint32_t delay_t = 500; // Initialise delay to 500ms
+
+uint16_t polling_speed = 500; // Poll every 0.5s 
 
 uint32_t adc_val;       //Value read from ADC
 char adc_string[16];    //Printable string
+
+// protocol functions
+void transmit(uint16_t package);
+void receive();
+uint16_t package(uint32_t polledData, uint8_t mode);
+int package_valid(uint16_t package);
+
+void transmitting_mode();
+void receiving_mode();
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -69,12 +80,6 @@ static void MX_ADC_Init(void);
 static void MX_TIM3_Init(void);
 
 /* USER CODE BEGIN PFP */
-void checkPB(void);
-void transmit(Packet packet);
-uint16_t package(uint16_t data, uint16_t comp);
-uint16_t unpackage(uint16_t data);
-void listen(Packet pkt);
-
 void EXTI0_1_IRQHandler(void);
 void writeLCD(char *char_in);
 uint32_t pollADC(void);
@@ -85,7 +90,105 @@ uint32_t ADCtoCCR(uint32_t adc_val);
 /* USER CODE BEGIN 0 */
 
 /* USER CODE END 0 */
+uint16_t package(uint32_t polledData, uint8_t mode) {
+  // create the message in the following format: 1 start bit, 1 mode bit, 12 data bits, 1 even parity bit, 1 stop bit
+  uint16_t message = 0;
+  uint16_t data = polledData & 0x0FFF; // get the 12 data bits
+  uint16_t parity = 0; // parity bit
+  uint16_t stop = 1; // stop bit
+  uint16_t start = 1; // start bit
 
+  //calculating the parity bit
+  for (int i = 0; i < 12; i++) {
+    if (data & (1 << i)) {
+      parity = !parity;
+    }
+  }
+
+  message = (start << 15) | (mode << 14) | (data << 2) | (parity << 1) | stop;
+  return message;
+  // if (mode == SAMPLE_TRANSMIT) {
+  // } else if (mode == COUNT_TRANSMIT) {
+  //   message = (start << 15) | (mode << 14) | (data << 2) | (parity << 1) | stop;
+  // }
+}
+
+int package_valid(uint16_t package) {
+  // 1. check if the first bit is a 1
+  // 2. check if the last bit is a 1
+  // 3. check if the parity bit is correct
+  // 4. return 1 if all checks pass, 0 otherwise
+  uint16_t start = package >> 15;
+  uint16_t data = (package >> 2) & 0x0FFF;
+  uint16_t parity = (package >> 1) & 0x0001;
+  uint16_t stop = package & 0x0001;
+
+  // check if the first bit is a 1
+  if (start != 1) {
+    return 0;
+  }
+  // check if the last bit is a 1
+  if (stop != 1) {
+    return 0;
+  }
+  // checking parity
+  uint16_t parity_check = 0;
+  for (int i = 0; i < 12; i++) {
+    if (data & (1 << i)) {
+      parity_check = !parity_check;
+    }
+  }
+  if (parity_check != parity) {
+    return 0;
+  }
+  return 1;
+}
+
+void transmit(uint16_t package) {
+  // send one bit to signify start of transmission
+  lcd_command(CLEAR);
+  lcd_putstring("Transmitting...");
+  HAL_GPIO_WritePin(GPIOB, LED6_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, Transmit_Pin, GPIO_PIN_SET);
+  HAL_Delay(COMM_DELAY);
+  // HAL_GPIO_WritePin(GPIOB, LED6_Pin, GPIO_PIN_RESET);
+  // HAL_GPIO_WritePin(GPIOB, Transmit_Pin, GPIO_PIN_RESET);
+  // clear LCD
+  
+  // transmit the message to the receiver bit by bit in delays of 500 ms
+  for (int i = 15; i >= 0; i--) {
+    // lcd_command(CLEAR);
+    if (package & (1 << i)) {
+      // set the transmit pin high
+      HAL_GPIO_WritePin(GPIOB, Transmit_Pin, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(GPIOB, LED6_Pin, GPIO_PIN_SET);
+      // write the bit number and its value to the lcd
+      // char bit_string[16];
+      // sprintf(bit_string, "Bit: %d = 1", i);
+      // lcd_putstring(bit_string);
+    } else {
+      // set the transmit pin low
+      HAL_GPIO_WritePin(GPIOB, Transmit_Pin, GPIO_PIN_RESET);
+      HAL_GPIO_WritePin(GPIOB, LED6_Pin, GPIO_PIN_RESET);
+      // char bit_string[16];
+      // sprintf(bit_string, "Bit: %d = 0", i);
+      // lcd_putstring(bit_string);
+    }
+    HAL_Delay(COMM_DELAY);
+  }
+}
+char *intToString(uint16_t num) {
+  // write out the number as a string in binary
+  char *bit_string = malloc(16 * sizeof(char));
+  for (int i = 0; i < 16; i++) {
+    if (num & (1 << i)) {
+      bit_string[15 - i] = '1';
+    } else {
+      bit_string[15 - i] = '0';
+    }
+  }
+  return bit_string;
+}
 /**
   * @brief  The application entry point.
   * @retval int
@@ -116,86 +219,220 @@ int main(void)
 
   /* USER CODE BEGIN 2 */
   init_LCD();
-  Packet out_pkt, in_pkt;
+
+  lcd_putstring("Select mode:");
+  lcd_command(LINE_TWO);
+  lcd_putstring("SW1:TMT SW2:RCV");
+
+  // infinitely loop until the user presses a button for the mode
+  while (1)
+  {
+    // if button 1 is pressed, set the mode to transmit
+    if (HAL_GPIO_ReadPin(GPIOA, Button1_Pin) == GPIO_PIN_RESET) {
+      MODE = TRASMIT_MODE;
+      break;
+    }
+    // if button 2 is pressed, set the mode to receive
+    if (HAL_GPIO_ReadPin(GPIOA, Button2_Pin) == GPIO_PIN_RESET) {
+      MODE = RECEIVE_MODE;
+      break;
+    }
+  }
+
+  lcd_command(CLEAR);
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+  if (MODE == TRASMIT_MODE) {
+    writeLCD("Transmit M");
+    HAL_Delay(1000);
+    transmitting_mode();
+  } else if (MODE == RECEIVE_MODE) {
+    writeLCD("Receive M");
+    HAL_Delay(1000);
+    receiving_mode();
+  } else {
+    writeLCD("Invalid M");
+    HAL_Delay(1000);
+  }
+}
+
+void transmitting_mode() {
   // PWM setup
   uint32_t CCR = 0;
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3); // Start PWM on TIM3 Channel 3
   /* USER CODE END 2 */
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
   while (1)
   {
-	// Toggle LED0
-	HAL_GPIO_TogglePin(GPIOB, LED7_Pin);
+    // Toggle LED0
+    // HAL_GPIO_TogglePin(GPIOB, LED7_Pin);
+    // HAL_GPIO_WritePin(GPIOB, LED6_Pin, GPIO_PIN_SET); // Turn on LED6
 
-	checkPB();
-  switch (mode){
-    case idle:
-      writeLCD("Idle");
-      break;
+    // if PB6 pressed, toggle LED7 
+    if (HAL_GPIO_ReadPin(GPIOA, Button1_Pin) == GPIO_PIN_RESET) {
+      HAL_GPIO_WritePin(GPIOB, LED7_Pin, GPIO_PIN_SET); // Turn on LED7
 
-    case send:
-      //Sample ADC and show value on LCD
-      uint32_t polled =  pollADC();
-      sprintf(adc_string, "Send: %u ", polled);
-      writeLCD(adc_string);
+      // get the value and package it
+      uint32_t pollVal = pollADC(); // Read ADC value during polling
+      uint16_t message = package(pollVal, SAMPLE_TRANSMIT);
 
-      //Package sampled data for transmission
-      out_pkt.data = package(polled, 0);
-      itoa(out_pkt.data, out_pkt.pkt, 2);
+      // write the data to the lcd
+      char* bit_string = intToString(message);
+      lcd_command(CLEAR); // Clear LCD
+      lcd_putstring("Sample TMT:");
       lcd_command(LINE_TWO);
-      lcd_putstring(out_pkt.pkt);
+      lcd_putstring(bit_string);
 
-      //Transmit packaged data to LED and GPIO
-      transmit(out_pkt);
-      
-      CCR = ADCtoCCR(polled); //Set CCR to converted value
-      __HAL_TIM_SetCompare(&htim3, TIM_CHANNEL_3, CCR);
-      break;
+      // transmit the message
+      transmit(message);
+      HAL_GPIO_WritePin(GPIOB, LED6_Pin, GPIO_PIN_RESET); // Turn off LED6
+      HAL_GPIO_WritePin(GPIOB, Transmit_Pin, GPIO_PIN_RESET); // take the transmit pin low
 
-    case receive:
-      writeLCD("Receive: ");
-      listen(in_pkt);
-      break;
+      samples_sent++;
+      // stop transmitting for 2 seconds
+      HAL_Delay(2000);
+      continue;
+    }
 
-    case compare:
-      sprintf(adc_string, "Compare: %u", count_sent);
-      writeLCD(adc_string);
-      //Package sampled data for transmission
-      out_pkt.data = package(count_sent, 1);
-      itoa(out_pkt.data, out_pkt.pkt, 2);
+    if (HAL_GPIO_ReadPin(GPIOA, Button2_Pin) == GPIO_PIN_RESET) {
+      HAL_GPIO_WritePin(GPIOB, LED7_Pin, GPIO_PIN_SET); // Turn on LED7
+
+      // get the value and package it
+      uint32_t count = samples_sent;
+      uint16_t message = package(count, COUNT_TRANSMIT);
+
+      // write the data to the lcd
+      char* bit_string = intToString(message);
+      lcd_command(CLEAR); // Clear LCD
+      lcd_putstring("Count Check:");
       lcd_command(LINE_TWO);
-      lcd_putstring(out_pkt.pkt);
+      lcd_putstring(bit_string);
 
-      //Transmit packaged data to LED and GPIO
-      transmit(out_pkt);
-      break;
+      // transmit the message
+      transmit(message);
+      HAL_GPIO_WritePin(GPIOB, LED6_Pin, GPIO_PIN_RESET); // Turn off LED6
+      HAL_GPIO_WritePin(GPIOB, Transmit_Pin, GPIO_PIN_RESET); // take the transmit pin low
+      // stop transmitting for 2 seconds
+      HAL_Delay(2000);
+      continue;
+    }
+
+    // the idle display showing the value of the potentiometer
+    // ADC to LCD; TODO: Read POT1 value and write to LCD
+    uint32_t voltage =  pollADC();
+    sprintf(adc_string, "V: %u mV", voltage); //Format voltage as string
+    writeLCD(adc_string);
     
-    case human:
-      if (delay_t == 50) {
-        writeLCD("Mode: Slow");
-        delay_t = 500;
-      } else {
-        writeLCD("Mode: Fast");
-        delay_t = 50;
-      }
-      break;
+    // Update PWM value; TODO: Get CCR
+    CCR = ADCtoCCR(voltage); //Set CCR to converted value
+    __HAL_TIM_SetCompare(&htim3, TIM_CHANNEL_3, CCR);
 
-    default:
-      writeLCD("Unknown");
-      break;
+    // Wait for delay ms
+    HAL_Delay (delay_t);
+      /* USER CODE END WHILE */
+
+      /* USER CODE BEGIN 3 */
   }
-
-	// Wait for delay ms
-	HAL_Delay (delay_t);
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
-  }
-  /* USER CODE END 3 */
 }
 
+void receiving_mode() {
+  while (1) {
+    // do nothing until button 1 is pressed
+    while (1)
+    {
+      if (HAL_GPIO_ReadPin(GPIOA, Button1_Pin) == GPIO_PIN_RESET) {
+        // toggle the LED 7 to show that the device is listening
+        HAL_GPIO_TogglePin(GPIOB, LED7_Pin);
+
+        // put in line two LCD that the device is actively listening
+        lcd_command(CLEAR);
+        lcd_putstring("Receive Mode:");
+        lcd_command(LINE_TWO);
+        lcd_putstring("Listening...");
+
+        break;
+      }
+    }
+    
+    // start listening for transmissions
+    while (1) {
+      // press the button again to stop listening
+      if (HAL_GPIO_ReadPin(GPIOA, Button1_Pin) == GPIO_PIN_RESET) {
+        // toggle the LED 7 to show that the device is no longer listening
+        HAL_GPIO_TogglePin(GPIOB, LED7_Pin);
+
+        // put in line two LCD that the device is not actively listening
+        lcd_command(CLEAR);
+        lcd_putstring("Receive Mode:");
+        lcd_command(LINE_TWO);
+        lcd_putstring("Off");
+        break;
+      }
+      // listen if there is a transmission
+      // transmission is signified by the LED 6 being on for 1 second
+      uint16_t message = 0;
+      if (HAL_GPIO_ReadPin(GPIOB, Receive_Pin) == GPIO_PIN_SET) {
+        // read the message bit by bit
+        for (int i = 15; i >= 0; i--) {
+          HAL_Delay(COMM_DELAY);
+          if (HAL_GPIO_ReadPin(GPIOB, Receive_Pin) == GPIO_PIN_SET) {
+            message |= (1 << i);
+          }
+        }
+
+        // check if the message is valid
+        if (!package_valid(message)) {
+          lcd_command(CLEAR);
+          lcd_putstring("Invalid message");
+          HAL_Delay(2000);
+          continue;
+        }
+
+        //check the transmission type and deal with it accordingly
+        int message_type = (message >> 14) & 0x0001;
+        if (message_type == SAMPLE_TRANSMIT) {
+          samples_received++;
+          // if the message is valid, unpack the message
+          uint16_t unpacked_message = (message >> 2) & 0x0FFF;
+          char* unpacked_string = malloc(16 * sizeof(char));
+          sprintf(unpacked_string, "V: %u mV", unpacked_message); //Format voltage as string
+          // writeLCD(unpacked_string);
+          // write the data to the lcd
+          lcd_command(CLEAR);
+          lcd_putstring("Sample RCV:");
+          lcd_command(LINE_TWO);
+          lcd_putstring(unpacked_string);
+          HAL_Delay(2000);
+        }
+        else {
+          // if the message is valid, unpack the message
+          uint16_t unpacked_count = (message >> 2) & 0x0FFF;
+          
+          // compare the received count with the sent count
+          if (unpacked_count == samples_received) {
+            lcd_command(CLEAR);
+            lcd_putstring("Count RCV:");
+            lcd_command(LINE_TWO);
+            lcd_putstring("Success");
+            HAL_Delay(2000);
+          } else {
+            lcd_command(CLEAR);
+            lcd_putstring("Count RCV:");
+            lcd_command(LINE_TWO);
+            lcd_putstring("Fail");
+            samples_received = unpacked_count;
+            HAL_Delay(2000);
+          }
+        }
+        // // put in line two LCD that the device is actively listening
+        // lcd_command(CLEAR);
+        // lcd_putstring("Receive M");
+        // lcd_command(LINE_TWO);
+        // lcd_putstring("Listening...");
+      }
+    }
+  }
+}
 /**
   * @brief System Clock Configuration
   * @retval None
@@ -312,8 +549,6 @@ static void MX_TIM3_Init(void)
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
-  TIM_IC_InitTypeDef sConfigIC = {0};
-
 
   /* USER CODE BEGIN TIM3_Init 1 */
 
@@ -377,24 +612,16 @@ static void MX_GPIO_Init(void)
 
   /**/
   LL_GPIO_ResetOutputPin(LED7_GPIO_Port, LED7_Pin);
-  LL_GPIO_ResetOutputPin(LED7_GPIO_Port, LED3_Pin);
-  LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_7);
+  LL_GPIO_ResetOutputPin(LED6_GPIO_Port, LED6_Pin);
 
   /**/
   LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTA, LL_SYSCFG_EXTI_LINE0);
 
   /**/
   LL_GPIO_SetPinPull(Button0_GPIO_Port, Button0_Pin, LL_GPIO_PULL_UP);
-  LL_GPIO_SetPinPull(Button0_GPIO_Port, Button1_Pin, LL_GPIO_PULL_UP);
-  LL_GPIO_SetPinPull(Button0_GPIO_Port, Button2_Pin, LL_GPIO_PULL_UP);
-  LL_GPIO_SetPinPull(Button0_GPIO_Port, Button3_Pin, LL_GPIO_PULL_UP);
-  LL_GPIO_SetPinPull(GPIOA, LL_GPIO_PIN_7, LL_GPIO_PULL_UP);
+
   /**/
   LL_GPIO_SetPinMode(Button0_GPIO_Port, Button0_Pin, LL_GPIO_MODE_INPUT);
-  LL_GPIO_SetPinMode(Button0_GPIO_Port, Button1_Pin, LL_GPIO_MODE_INPUT);
-  LL_GPIO_SetPinMode(Button0_GPIO_Port, Button2_Pin, LL_GPIO_MODE_INPUT);
-  LL_GPIO_SetPinMode(Button0_GPIO_Port, Button3_Pin, LL_GPIO_MODE_INPUT);
-  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_7, LL_GPIO_MODE_OUTPUT);
 
   /**/
   EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_0;
@@ -403,6 +630,18 @@ static void MX_GPIO_Init(void)
   EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
   LL_EXTI_Init(&EXTI_InitStruct);
 
+
+  /**/
+  GPIO_InitStruct.Pin = Button1_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_UP;
+  LL_GPIO_Init(Button1_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = Button2_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_UP;
+  LL_GPIO_Init(Button2_GPIO_Port, &GPIO_InitStruct);
   /**/
   GPIO_InitStruct.Pin = LED7_Pin;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
@@ -410,8 +649,28 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
-  GPIO_InitStruct.Pin = LED3_Pin;
-  LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = LED6_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO; // 
+  LL_GPIO_Init(LED6_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = Transmit_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO; //
+  LL_GPIO_Init(Transmit_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = Receive_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO; //
+  LL_GPIO_Init(Receive_GPIO_Port, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
   HAL_NVIC_SetPriority(EXTI0_1_IRQn, 0, 0);
@@ -422,19 +681,17 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void EXTI0_1_IRQHandler(void)
 {
+
+
 	// TODO: Add code to switch LED7 delay frequency
-  curr_millis = HAL_GetTick(); //Get current time on system clock
-  if ((delay_t == 500) && (curr_millis - prev_millis >= 350)) { //Wait 500ms between presses
-    mode = (0b1111 & ~(GPIOA -> IDR));
+  if (HAL_GetTick() - ticks_before < 500) { // If button pressed within 0.5s
+    HAL_GPIO_EXTI_IRQHandler(Button0_Pin);
+    return;
+  } else {
+    ticks_before = HAL_GetTick(); // Update ticks_before
   }
-  prev_millis = curr_millis;
 
 	HAL_GPIO_EXTI_IRQHandler(Button0_Pin); // Clear interrupt flags
-}
-
-// Check push buttons
-void checkPB(void){
-  mode = (0b1111 & ~(GPIOA -> IDR));
 }
 
 // TODO: Complete the writeLCD function
@@ -448,7 +705,7 @@ void writeLCD(char *char_in){
 uint32_t pollADC(void){
   // TODO: Complete function body to get ADC val
   HAL_ADC_Start(&hadc);
-  HAL_ADC_PollForConversion(&hadc, 1000); //Poll ADC every second
+  HAL_ADC_PollForConversion(&hadc, polling_speed); //Poll ADC every 500ms
   uint32_t value = HAL_ADC_GetValue(&hadc);
 	HAL_ADC_Stop(&hadc); //Stop ADC after getting value
   return value;
@@ -457,116 +714,8 @@ uint32_t pollADC(void){
 // Calculate PWM CCR value
 uint32_t ADCtoCCR(uint32_t adc_val){
   // TODO: Calculate CCR val using an appropriate equation
-	uint32_t val = adc_val * (47999/4096);  // CCR = ADC * (ARR/n)
+	uint32_t val = adc_val * (47999/4096);  // CCR = ADC * (ARR/levels)
 	return val;
-}
-
-// Calculate parity using even parity system
-uint16_t parity(uint16_t data){
-  uint16_t parity = 0;
-  while (data) { //Check LSB and shift right
-    parity += data & 1; 
-    data >>= 1;
-  }
-  parity %= 2;
-  return parity;
-}
-
-// Create a data packet according to specified protocol
-uint16_t package(uint16_t data, uint16_t comp){
-  uint16_t packed = 0b1000000000000001; //Template with start and end bits set
-  packed |= (comp << 14);
-  packed |= (data << 2);
-  //Calculate parity with even parity system
-  uint16_t par = parity(data);
-  packed |= (par << 1);
-  return packed;
-}
-
-uint16_t unpackage(uint16_t data){
-  
-}
-// Send data packet to LED3 and PA7
-void transmit(Packet packet) {
-  size_t i = 0;
-  //Send first 15 bits of packet
-  while (i < 15) {
-    if (packet.pkt[i] == '1'){
-      HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_SET);
-      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET);
-    } else {
-      HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
-      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET);   
-    }
-    if (i==2) { //Increase transmission frequency after checkpoint bit
-      //delay_t >>= 1;
-    }
-    HAL_Delay(delay_t);
-    ++i;
-  }
-  //Correct end of packet
-  delay_t <<= 2; //Slow transmission of end bit
-  if (packet.pkt[i] == '1') {
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET);
-    (packet.pkt[1] == '1') ? 0 : ++count_sent;
-    HAL_Delay(delay_t);
-  } else { //Flash LED for invalid packet
-    while (i > 0) {
-      HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_3);
-      HAL_Delay(delay_t/6);
-      --i;
-    }
-  }
-  
-  //Return to original values
-  delay_t >>=1;
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET); 
-  
-}
-
-void listen(Packet pkt){
-  pkt.data = 0;
-  while (!(pkt.data & 0b1000000000000000))
-  {
-    GPIO_PinState val = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_7);
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, val);
-    pkt.data = (pkt.data << 1)|val;
-    HAL_Delay(delay_t);
-  }
-  uint16_t temp = (pkt.data << 2) >> 4;
-  itoa(temp, pkt.pkt, 10);
-  lcd_putstring(pkt.pkt);
-  
-  itoa(pkt.data, pkt.pkt, 2);
-  lcd_command(LINE_TWO);
-  lcd_putstring(pkt.pkt);
-  
-  //Check parity bit
-  uint16_t par = parity(temp), valid = 0;
-  if (par == pkt.pkt[14]) writeLCD("Equal par: ");
-  else writeLCD ("Wrong par: ");
-
-  // Check message type
-  char check = '0';
-  if (pkt.pkt[1]) { //Checkpoint message
-    if (temp == count_recv) check = 'y';
-    else {
-      check = 'n';
-      count_recv = temp;
-    }
-    lcd_putchar(check);
-  } else { //Sample message
-    par == pkt.pkt[14] ? ++count_recv: 0; //Increase count for valid message
-  }
-
-  //Hold value to read. Can remove later
-  while (1)
-  {
-    /* code */
-  }
-  
 }
 
 void ADC1_COMP_IRQHandler(void)
