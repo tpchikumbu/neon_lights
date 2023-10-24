@@ -461,19 +461,25 @@ uint32_t ADCtoCCR(uint32_t adc_val){
 	return val;
 }
 
-// Create a data packet according to specified protocol
-uint16_t package(uint16_t data, uint16_t comp){
-  uint16_t packed = 0b1000000000000001; //Template with start and end bits set
-  packed |= (comp << 14);
-  packed |= (data << 2);
-  //Calculate parity with even parity system
+// Calculate parity using even parity system
+uint16_t parity(uint16_t data){
   uint16_t parity = 0;
   while (data) { //Check LSB and shift right
     parity += data & 1; 
     data >>= 1;
   }
   parity %= 2;
-  packed |= (parity << 1);
+  return parity;
+}
+
+// Create a data packet according to specified protocol
+uint16_t package(uint16_t data, uint16_t comp){
+  uint16_t packed = 0b1000000000000001; //Template with start and end bits set
+  packed |= (comp << 14);
+  packed |= (data << 2);
+  //Calculate parity with even parity system
+  uint16_t par = parity(data);
+  packed |= (par << 1);
   return packed;
 }
 
@@ -527,6 +533,7 @@ void listen(Packet pkt){
     GPIO_PinState val = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_7);
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, val);
     pkt.data = (pkt.data << 1)|val;
+    HAL_Delay(delay_t);
   }
   uint16_t temp = (pkt.data << 2) >> 4;
   itoa(temp, pkt.pkt, 10);
@@ -535,6 +542,26 @@ void listen(Packet pkt){
   itoa(pkt.data, pkt.pkt, 2);
   lcd_command(LINE_TWO);
   lcd_putstring(pkt.pkt);
+  
+  //Check parity bit
+  uint16_t par = parity(temp), valid = 0;
+  if (par == pkt.pkt[14]) writeLCD("Equal par: ");
+  else writeLCD ("Wrong par: ");
+
+  // Check message type
+  char check = '0';
+  if (pkt.pkt[1]) { //Checkpoint message
+    if (temp == count_recv) check = 'y';
+    else {
+      check = 'n';
+      count_recv = temp;
+    }
+    lcd_putchar(check);
+  } else { //Sample message
+    par == pkt.pkt[14] ? ++count_recv: 0; //Increase count for valid message
+  }
+
+  //Hold value to read. Can remove later
   while (1)
   {
     /* code */
