@@ -28,16 +28,12 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-typedef struct {
-  uint16_t data;
-  char pkt[16];
-} Packet;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define TRUE 1
-#define FALSE 0
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -47,7 +43,6 @@ typedef struct {
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc;
-
 TIM_HandleTypeDef htim3;
 
 // set the mode for transmission or reception
@@ -86,7 +81,6 @@ static void MX_TIM3_Init(void);
 
 /* USER CODE BEGIN PFP */
 void EXTI0_1_IRQHandler(void);
-void EXTI2_3_IRQHandler(void);
 void writeLCD(char *char_in);
 uint32_t pollADC(void);
 uint32_t ADCtoCCR(uint32_t adc_val);
@@ -233,20 +227,20 @@ int main(void)
   lcd_command(LINE_TWO);
   lcd_putstring("SW1:TMT SW2:RCV");
 
-  // // infinitely loop until the user presses a button for the mode
-  // while (1)
-  // {
-  //   // if button 1 is pressed, set the mode to transmit
-  //   if (HAL_GPIO_ReadPin(GPIOA, Button1_Pin) == GPIO_PIN_RESET) {
-  //     MODE = TRASMIT_MODE;
-  //     break;
-  //   }
-  //   // if button 2 is pressed, set the mode to receive
-  //   if (HAL_GPIO_ReadPin(GPIOA, Button2_Pin) == GPIO_PIN_RESET) {
-  //     MODE = RECEIVE_MODE;
-  //     break;
-  //   }
-  // }
+  // infinitely loop until the user presses a button for the mode
+  while (1)
+  {
+    // if button 1 is pressed, set the mode to transmit
+    if (HAL_GPIO_ReadPin(GPIOA, Button1_Pin) == GPIO_PIN_RESET) {
+      MODE = TRASMIT_MODE;
+      break;
+    }
+    // if button 2 is pressed, set the mode to receive
+    if (HAL_GPIO_ReadPin(GPIOA, Button2_Pin) == GPIO_PIN_RESET) {
+      MODE = RECEIVE_MODE;
+      break;
+    }
+  }
 
   lcd_command(CLEAR);
   /* Infinite loop */
@@ -472,8 +466,6 @@ void receiving_mode() {
     }
   }
 }
-
-
 /**
   * @brief System Clock Configuration
   * @retval None
@@ -659,37 +651,10 @@ static void MX_GPIO_Init(void)
   LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTA, LL_SYSCFG_EXTI_LINE0);
 
   /**/
-  LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTA, LL_SYSCFG_EXTI_LINE1);
-
-  /**/
-  LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTA, LL_SYSCFG_EXTI_LINE2);
-
-  /**/
-  LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTA, LL_SYSCFG_EXTI_LINE3);
-
-  /**/
   LL_GPIO_SetPinPull(Button0_GPIO_Port, Button0_Pin, LL_GPIO_PULL_UP);
 
   /**/
-  LL_GPIO_SetPinPull(Button1_GPIO_Port, Button1_Pin, LL_GPIO_PULL_UP);
-
-  /**/
-  LL_GPIO_SetPinPull(Button2_GPIO_Port, Button2_Pin, LL_GPIO_PULL_UP);
-
-  /**/
-  LL_GPIO_SetPinPull(Button3_GPIO_Port, Button3_Pin, LL_GPIO_PULL_UP);
-
-  /**/
   LL_GPIO_SetPinMode(Button0_GPIO_Port, Button0_Pin, LL_GPIO_MODE_INPUT);
-
-  /**/
-  LL_GPIO_SetPinMode(Button1_GPIO_Port, Button1_Pin, LL_GPIO_MODE_INPUT);
-
-  /**/
-  LL_GPIO_SetPinMode(Button2_GPIO_Port, Button2_Pin, LL_GPIO_MODE_INPUT);
-
-  /**/
-  LL_GPIO_SetPinMode(Button3_GPIO_Port, Button3_Pin, LL_GPIO_MODE_INPUT);
 
   /**/
   EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_0;
@@ -698,27 +663,18 @@ static void MX_GPIO_Init(void)
   EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
   LL_EXTI_Init(&EXTI_InitStruct);
 
-  /**/
-  EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_1;
-  EXTI_InitStruct.LineCommand = ENABLE;
-  EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
-  EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
-  LL_EXTI_Init(&EXTI_InitStruct);
 
   /**/
-  EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_2;
-  EXTI_InitStruct.LineCommand = ENABLE;
-  EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
-  EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
-  LL_EXTI_Init(&EXTI_InitStruct);
+  GPIO_InitStruct.Pin = Button1_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_UP;
+  LL_GPIO_Init(Button1_GPIO_Port, &GPIO_InitStruct);
 
   /**/
-  EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_3;
-  EXTI_InitStruct.LineCommand = ENABLE;
-  EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
-  EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
-  LL_EXTI_Init(&EXTI_InitStruct);
-
+  GPIO_InitStruct.Pin = Button2_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_UP;
+  LL_GPIO_Init(Button2_GPIO_Port, &GPIO_InitStruct);
   /**/
   GPIO_InitStruct.Pin = LED7_Pin;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
@@ -752,69 +708,23 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN MX_GPIO_Init_2 */
   HAL_NVIC_SetPriority(EXTI0_1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI0_1_IRQn);
-  HAL_NVIC_SetPriority(EXTI2_3_IRQn, 0, 0);
-    HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
 /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
 void EXTI0_1_IRQHandler(void)
 {
-	curr_millis = HAL_GetTick(); //Get current time on system clock
-	if ((delay_t == 50) && (curr_millis - prev_millis >= 350)) { //Wait 500ms between presses
-		if(__HAL_GPIO_EXTI_GET_FLAG(GPIO_PIN_0))
-		{
-			if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_SET)
-			{
-				// Pin 0 was pressed
-				writeLCD("Pin 0");
-			}
-			__HAL_GPIO_EXTI_CLEAR_FLAG(GPIO_PIN_0);
-		}
-		else if(__HAL_GPIO_EXTI_GET_FLAG(GPIO_PIN_1))
-		{
-			if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1) == GPIO_PIN_SET)
-			{
-				// Pin 1 was pressed
-				writeLCD("Pin 1");
-			}
-			__HAL_GPIO_EXTI_CLEAR_FLAG(GPIO_PIN_1);
-		}
-	}
-	prev_millis = curr_millis;
+
+
+	// TODO: Add code to switch LED7 delay frequency
+  if (HAL_GetTick() - ticks_before < 500) { // If button pressed within 0.5s
+    HAL_GPIO_EXTI_IRQHandler(Button0_Pin);
+    return;
+  } else {
+    ticks_before = HAL_GetTick(); // Update ticks_before
+  }
+
 	HAL_GPIO_EXTI_IRQHandler(Button0_Pin); // Clear interrupt flags
-}
-
-void EXTI2_3_IRQHandler(void)
-{
-	curr_millis = HAL_GetTick(); //Get current time on system clock
-	if ((delay_t == 50) && (curr_millis - prev_millis >= 350)) { //Wait 500ms between presses
-		if(__HAL_GPIO_EXTI_GET_FLAG(GPIO_PIN_2))
-		{
-			if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == GPIO_PIN_SET)
-			{
-				// Pin 0 was pressed
-				writeLCD("Pin 2");
-			}
-			__HAL_GPIO_EXTI_CLEAR_FLAG(GPIO_PIN_2);
-		}
-		else if(__HAL_GPIO_EXTI_GET_FLAG(GPIO_PIN_3))
-		{
-			if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3) == GPIO_PIN_SET)
-			{
-				// Pin 1 was pressed
-				writeLCD("Pin 3");
-			}
-			__HAL_GPIO_EXTI_CLEAR_FLAG(GPIO_PIN_3);
-		}
-	}
-	prev_millis = curr_millis;
-	HAL_GPIO_EXTI_IRQHandler(Button2_Pin); // Clear interrupt flags
-}
-
-// Check push buttons
-void checkPB(void){
-  mode = (0b1111 & ~(GPIOA -> IDR));
 }
 
 // TODO: Complete the writeLCD function
@@ -828,7 +738,7 @@ void writeLCD(char *char_in){
 uint32_t pollADC(void){
   // TODO: Complete function body to get ADC val
   HAL_ADC_Start(&hadc);
-  HAL_ADC_PollForConversion(&hadc, 1000); //Poll ADC every second
+  HAL_ADC_PollForConversion(&hadc, polling_speed); //Poll ADC every 500ms
   uint32_t value = HAL_ADC_GetValue(&hadc);
 	HAL_ADC_Stop(&hadc); //Stop ADC after getting value
   return value;
@@ -837,116 +747,8 @@ uint32_t pollADC(void){
 // Calculate PWM CCR value
 uint32_t ADCtoCCR(uint32_t adc_val){
   // TODO: Calculate CCR val using an appropriate equation
-	uint32_t val = adc_val * (47999/4096);  // CCR = ADC * (ARR/n)
+	uint32_t val = adc_val * (47999/4096);  // CCR = ADC * (ARR/levels)
 	return val;
-}
-
-// Calculate parity using even parity system
-uint16_t parity(uint16_t data){
-  uint16_t parity = 0;
-  while (data) { //Check LSB and shift right
-    parity += data & 1; 
-    data >>= 1;
-  }
-  parity %= 2;
-  return parity;
-}
-
-// Create a data packet according to specified protocol
-uint16_t package(uint16_t data, uint16_t comp){
-  uint16_t packed = 0b1000000000000001; //Template with start and end bits set
-  packed |= (comp << 14);
-  packed |= (data << 2);
-  //Calculate parity with even parity system
-  uint16_t par = parity(data);
-  packed |= (par << 1);
-  return packed;
-}
-
-uint16_t unpackage(uint16_t data){
-  
-}
-// Send data packet to LED3 and PA7
-void transmit(Packet packet) {
-  size_t i = 0;
-  //Send first 15 bits of packet
-  while (i < 15) {
-    if (packet.pkt[i] == '1'){
-      HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_SET);
-      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET);
-    } else {
-      HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
-      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET);   
-    }
-    if (i==2) { //Increase transmission frequency after checkpoint bit
-      //delay_t >>= 1;
-    }
-    HAL_Delay(delay_t);
-    ++i;
-  }
-  //Correct end of packet
-  delay_t <<= 2; //Slow transmission of end bit
-  if (packet.pkt[i] == '1') {
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET);
-    (packet.pkt[1] == '1') ? 0 : ++count_sent;
-    HAL_Delay(delay_t);
-  } else { //Flash LED for invalid packet
-    while (i > 0) {
-      HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_3);
-      HAL_Delay(delay_t/6);
-      --i;
-    }
-  }
-  
-  //Return to original values
-  delay_t >>=1;
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET); 
-  
-}
-
-void listen(Packet pkt){
-  pkt.data = 0;
-  while (!(pkt.data & 0b1000000000000000))
-  {
-    GPIO_PinState val = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_7);
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, val);
-    pkt.data = (pkt.data << 1)|val;
-    HAL_Delay(delay_t);
-  }
-  uint16_t temp = (pkt.data << 2) >> 4;
-  itoa(temp, pkt.pkt, 10);
-  lcd_putstring(pkt.pkt);
-  
-  itoa(pkt.data, pkt.pkt, 2);
-  lcd_command(LINE_TWO);
-  lcd_putstring(pkt.pkt);
-  
-  //Check parity bit
-  uint16_t par = parity(temp), valid = 0;
-  if (par == pkt.pkt[14]) writeLCD("Equal par: ");
-  else writeLCD ("Wrong par: ");
-
-  // Check message type
-  char check = '0';
-  if (pkt.pkt[1]) { //Checkpoint message
-    if (temp == count_recv) check = 'y';
-    else {
-      check = 'n';
-      count_recv = temp;
-    }
-    lcd_putchar(check);
-  } else { //Sample message
-    par == pkt.pkt[14] ? ++count_recv: 0; //Increase count for valid message
-  }
-
-  //Hold value to read. Can remove later
-  while (1)
-  {
-    /* code */
-  }
-  
 }
 
 void ADC1_COMP_IRQHandler(void)
